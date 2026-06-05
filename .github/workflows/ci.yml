@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: lint + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        shell: bash
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            if [ "$RUNNER_OS" = "Linux" ]; then
+              sudo apt-get update && sudo apt-get install -y shellcheck
+            else
+              brew install shellcheck
+            fi
+          fi
+          shellcheck --version
+
+      - name: ShellCheck
+        shell: bash
+        run: |
+          shellcheck -x --severity=warning \
+            bin/claude-backup bin/claude-restore bin/claude-backup-banner \
+            lib/*.sh install.sh uninstall.sh tests/*.sh \
+            completions/claude-backup.bash
+
+      - name: Report bash version (macOS also exercises system bash 3.2)
+        shell: bash
+        run: |
+          echo "default bash: $(bash --version | head -1)"
+          [ -x /bin/bash ] && echo "/bin/bash: $(/bin/bash -c 'echo $BASH_VERSION')" || true
+
+      - name: Run test suite
+        shell: bash
+        run: bash tests/run.sh
+
+      - name: Install + smoke test
+        shell: bash
+        run: |
+          ./install.sh --prefix "$RUNNER_TEMP/ccb" --yes --no-banner-conf
+          "$RUNNER_TEMP/ccb/bin/claude-backup" --version
+          "$RUNNER_TEMP/ccb/bin/claude-backup-banner" >/dev/null
+          # doctor returns 0 even when Claude Code is absent; just ensure it runs
+          "$RUNNER_TEMP/ccb/bin/claude-backup" doctor

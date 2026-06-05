@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+#
+# claude-backup - Back up Claude Code global and project configuration.
+#
+# Subcommands: (none)=backup, doctor, list, banner.
+# This tool never requires Claude Code to be installed or healthy.
+set -euo pipefail
+
+# --- locate libraries (works from a repo checkout and from an install) ------
+_ccb_resolve_dir() {
+  local src="$1" dir
+  while [ -h "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+_self="$(_ccb_resolve_dir "${BASH_SOURCE[0]}")"
+CCB_LIB_DIR=""
+for _cand in \
+  "${CLAUDE_BACKUP_LIB:-}" \
+  "$_self/../lib" \
+  "$_self/../share/claude-code-backup/lib" \
+  "$HOME/.local/share/claude-code-backup/lib"; do
+  if [ -n "$_cand" ] && [ -f "$_cand/common.sh" ]; then CCB_LIB_DIR="$_cand"; break; fi
+done
+[ -n "$CCB_LIB_DIR" ] || { echo "claude-backup: cannot locate lib dir (set CLAUDE_BACKUP_LIB)" >&2; exit 1; }
+export CCB_LIB_DIR
+# shellcheck source=../lib/common.sh
+. "$CCB_LIB_DIR/common.sh"
+# shellcheck source=../lib/archive.sh
+. "$CCB_LIB_DIR/archive.sh"
+# shellcheck source=../lib/restore.sh
+. "$CCB_LIB_DIR/restore.sh"
+
+usage() {
+  cat <<'EOF'
+claude-backup - back up Claude Code configuration
+
+USAGE:
+  claude-backup [options]      Create a backup (default)
+  claude-backup list           List existing backups
+  claude-backup doctor         Diagnose the environment
+  claude-backup banner         Print the status banner
+
+OPTIONS (backup):
+  --dest <path>        Backup destination directory
+  --icloud             Also copy backup to iCloud Drive (macOS only)
+  --include-project    Include current project config (default: true)
+  --no-project         Do not include project config
+  --no-history         Exclude projects/ (conversation history; large)
+  --full               Include everything (no pruning of caches/plugins/etc.)
+  --include-env        Include .env.claude and .envrc (may contain secrets)
+  --strict-secrets     Abort if likely secrets are detected
+  --dry-run            Show what would be backed up
+  --json               Machine-readable JSON output
+  --quiet              Minimal output
+  --help               Show this help
+  --version            Show version
+
+DESTINATION ORDER:
+  --dest  >  $CLAUDE_BACKUP_DIR  >  $HOME/Backups/claude-code
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+_chk() {  # _chk <ok|warn|fail> <message>
+  case "$1" in
+    ok)   printf '  %s✓%s %s\n'  "$C_GREEN"  "$C_RESET" "$2" ;;
+    warn) printf '  %s⚠%s %s\n'  "$C_YELLOW" "$C_RESET" "$2" ;;
+    fail) printf '  %s✗%s %s\n'  "$C_RED"    "$C_RESET" "$2" ;;
+  esac
+}
+
+do_doctor() {
+  local backup_dir; backup_dir="$(resolve_backup_dir "${OPT_DEST:-}")"
+  log_step "claude-code-backup doctor (v$CCB_VERSION)"
+
+  if platform_supported; then _chk ok "OS supported: $(os_version)"
+  else _chk fail "OS not supported: $(uname -s)"; fi
+
+  _chk ok "Bash version: ${BASH_VERSION:-unknown}"
+
+  command -v tar  >/dev/null 2>&1 && _chk ok "tar available"  || _chk fail "tar not found"
+  command -v gzip >/dev/null 2>&1 && _chk ok "gzip available" || _chk fail "gzip not found"
+
+  if mkdir -p "$backup_dir" 2>/dev/null && [ -w "$backup_dir" ]; then
+    _chk ok "Backup directory writable: $backup_dir"
+  else
+    _chk fail "Backup directory not writable: $backup_dir"
+  fi
+
+  if command -v claude >/dev/null 2>&1; then _chk ok "Claude Code: $(claude_version)"
+  else _chk warn "Claude Code binary not found (backup/restore still work)"; fi
+
+  [ -d "$HOME/.claude" ]      && _chk ok "Global config: ~/.claude exists"      || _chk warn "Global config: ~/.claude missing"
+  [ -f "$HOME/.claude.json" ] && _chk ok "Global config: ~/.claude.json exists" || _chk warn "Global config: ~/.claude.json missing"
+
+  if [ -d "$PWD/.claude" ] || [ -f "$PWD/.mcp.json" ] || [ -f "$PWD/CLAUDE.md" ]; then
+    _chk ok "Project config present in: $PWD"
+  else
+    _chk warn "No project config in current directory"
+  fi
+
+  # Secret scan over the standard targets.
+  local hits
+  hits="$(scan_paths "$HOME/.claude.json" "$PWD/.mcp.json" "$PWD/.claude" 2>/dev/null || true)"
+  if [ -n "$hits" ]; then
+    _chk warn "Possible secrets detected in config (see SECURITY.md):"
+    printf '%s\n' "$hits" | summarize_secret_hits
+  else
+    _chk ok "No obvious secrets detected by the heuristic scanner"
+  fi
+
+  if [ "$CCB_PLATFORM" = "macos" ]; then
+    if icloud_dir >/dev/null 2>&1; then _chk ok "iCloud Drive available"
+    else _chk warn "iCloud Drive directory not found"; fi
+  fi
+
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) _chk ok "PATH contains ~/.local/bin" ;;
+    *) _chk warn "PATH does not contain ~/.local/bin (add it for the CLI)" ;;
+  esac
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# argument parsing / dispatch
+# ---------------------------------------------------------------------------
+OPT_DEST=""; OPT_ICLOUD=0; OPT_INCLUDE_PROJECT=1; OPT_INCLUDE_ENV=0
+OPT_STRICT=0; OPT_DRY_RUN=0; OPT_FULL=0; OPT_NO_HISTORY=0
+
+# Subcommand dispatch on the first argument.
+case "${1:-}" in
+  list)   shift
+          while [ $# -gt 0 ]; do case "$1" in --json) CCB_JSON=1;; --dest) OPT_DEST="$2"; shift;; *) ;; esac; shift; done
+          do_list; exit 0 ;;
+  doctor) shift; do_doctor; exit 0 ;;
+  banner) shift
+          # shellcheck source=../lib/banner.sh
+          . "$CCB_LIB_DIR/banner.sh"; render_banner; exit 0 ;;
+  -h|--help) usage; exit 0 ;;
+  --version) printf 'claude-backup %s\n' "$CCB_VERSION"; exit 0 ;;
+esac
+
+# Default path: backup. Parse options.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dest)            OPT_DEST="${2:-}"; shift ;;
+    --icloud)          OPT_ICLOUD=1 ;;
+    --include-project) OPT_INCLUDE_PROJECT=1 ;;
+    --no-project)      OPT_INCLUDE_PROJECT=0 ;;
+    --no-history)      OPT_NO_HISTORY=1 ;;
+    --full)            OPT_FULL=1 ;;
+    --include-env)     OPT_INCLUDE_ENV=1 ;;
+    --strict-secrets)  OPT_STRICT=1 ;;
+    --dry-run)         OPT_DRY_RUN=1 ;;
+    --json)            CCB_JSON=1 ;;
+    --quiet)           CCB_QUIET=1 ;;
+    -h|--help)         usage; exit 0 ;;
+    --version)         printf 'claude-backup %s\n' "$CCB_VERSION"; exit 0 ;;
+    *)                 die "unknown option: $1 (see --help)" ;;
+  esac
+  shift
+done
+
+platform_supported || log_warn "Unsupported platform ($(uname -s)); proceeding best-effort."
+do_backup

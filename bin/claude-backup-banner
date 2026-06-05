@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# claude-backup-banner - Print a compact project/backup status banner.
+#
+# Suitable for shell prompts, status lines, or Claude Code integration. All
+# detection is best-effort and never errors out; it prints a banner and exits 0.
+set -euo pipefail
+
+# --- locate libraries (works from a repo checkout and from an install) ------
+_ccb_resolve_dir() {
+  local src="$1" dir
+  while [ -h "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+_self="$(_ccb_resolve_dir "${BASH_SOURCE[0]}")"
+CCB_LIB_DIR=""
+for _cand in \
+  "${CLAUDE_BACKUP_LIB:-}" \
+  "$_self/../lib" \
+  "$_self/../share/claude-code-backup/lib" \
+  "$HOME/.local/share/claude-code-backup/lib"; do
+  if [ -n "$_cand" ] && [ -f "$_cand/common.sh" ]; then CCB_LIB_DIR="$_cand"; break; fi
+done
+[ -n "$CCB_LIB_DIR" ] || { echo "claude-backup-banner: cannot locate lib dir (set CLAUDE_BACKUP_LIB)" >&2; exit 1; }
+export CCB_LIB_DIR
+# shellcheck source=../lib/common.sh
+. "$CCB_LIB_DIR/common.sh"
+# shellcheck source=../lib/restore.sh
+. "$CCB_LIB_DIR/restore.sh"   # provides latest_backup()
+# shellcheck source=../lib/banner.sh
+. "$CCB_LIB_DIR/banner.sh"
+
+case "${1:-}" in
+  -h|--help)
+    cat <<'EOF'
+claude-backup-banner - print a compact status banner
+
+USAGE:
+  claude-backup-banner
+
+Configuration: $HOME/.claude-backup/banner.conf
+(see config/banner.example.conf and docs/banner.md)
+EOF
+    exit 0 ;;
+  --version) printf 'claude-backup-banner %s\n' "$CCB_VERSION"; exit 0 ;;
+esac
+
+render_banner

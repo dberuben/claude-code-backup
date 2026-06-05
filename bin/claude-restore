@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# claude-restore - Restore Claude Code configuration from a backup archive.
+#
+# Designed to work even when Claude Code is not installed. Restore is
+# interactive and conservative by default; see lib/restore.sh for the safety
+# guarantees.
+set -euo pipefail
+
+# --- locate libraries (works from a repo checkout and from an install) ------
+_ccb_resolve_dir() {
+  local src="$1" dir
+  while [ -h "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+_self="$(_ccb_resolve_dir "${BASH_SOURCE[0]}")"
+CCB_LIB_DIR=""
+for _cand in \
+  "${CLAUDE_BACKUP_LIB:-}" \
+  "$_self/../lib" \
+  "$_self/../share/claude-code-backup/lib" \
+  "$HOME/.local/share/claude-code-backup/lib"; do
+  if [ -n "$_cand" ] && [ -f "$_cand/common.sh" ]; then CCB_LIB_DIR="$_cand"; break; fi
+done
+[ -n "$CCB_LIB_DIR" ] || { echo "claude-restore: cannot locate lib dir (set CLAUDE_BACKUP_LIB)" >&2; exit 1; }
+export CCB_LIB_DIR
+# shellcheck source=../lib/common.sh
+. "$CCB_LIB_DIR/common.sh"
+# shellcheck source=../lib/restore.sh
+. "$CCB_LIB_DIR/restore.sh"
+
+usage() {
+  cat <<'EOF'
+claude-restore - restore Claude Code configuration from a backup
+
+USAGE:
+  claude-restore [options]
+
+OPTIONS:
+  --from <archive>      Restore from a specific archive (default: latest)
+  --list                List available backups and exit
+  --dry-run             Show the restore plan only
+  --force               Do not ask for confirmation
+  --home-only           Restore only global (~) config
+  --project-only        Restore only current-project config
+  --backup-existing     Take a pre-restore backup first (default: true)
+  --no-backup-existing  Skip the pre-restore backup
+  --dest <path>         Backup directory to read from / write pre-restore into
+  --json                Machine-readable JSON output
+  --help                Show this help
+  --version             Show version
+EOF
+}
+
+OPT_FROM=""; OPT_DEST=""; OPT_DRY_RUN=0; OPT_FORCE=0
+OPT_HOME_ONLY=0; OPT_PROJECT_ONLY=0; OPT_BACKUP_EXISTING=1
+DO_LIST=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --from)               OPT_FROM="${2:-}"; shift ;;
+    --dest)               OPT_DEST="${2:-}"; shift ;;
+    --list)               DO_LIST=1 ;;
+    --dry-run)            OPT_DRY_RUN=1 ;;
+    --force)              OPT_FORCE=1 ;;
+    --home-only)          OPT_HOME_ONLY=1 ;;
+    --project-only)       OPT_PROJECT_ONLY=1 ;;
+    --backup-existing)    OPT_BACKUP_EXISTING=1 ;;
+    --no-backup-existing) OPT_BACKUP_EXISTING=0 ;;
+    --json)               CCB_JSON=1 ;;
+    --quiet)              CCB_QUIET=1 ;;
+    -h|--help)            usage; exit 0 ;;
+    --version)            printf 'claude-restore %s\n' "$CCB_VERSION"; exit 0 ;;
+    *)                    die "unknown option: $1 (see --help)" ;;
+  esac
+  shift
+done
+
+if [ "$OPT_HOME_ONLY" = "1" ] && [ "$OPT_PROJECT_ONLY" = "1" ]; then
+  die "--home-only and --project-only are mutually exclusive"
+fi
+
+if [ "$DO_LIST" = "1" ]; then
+  do_list
+  exit 0
+fi
+
+do_restore

@@ -1,0 +1,25 @@
+# NEVER commit backups — they may contain credentials, tokens and secrets.
+*.tar.gz
+Backups/
+backups/
+pre-restore/
+
+# Local banner / tool config
+.claude-backup/
+banner.conf
+
+# Environment files that may hold secrets
+.env
+.env.*
+.envrc
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Test scratch
+/tmp/
+*.log

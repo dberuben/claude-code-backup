@@ -1,0 +1,16 @@
+# ShellCheck configuration for claude-code-backup.
+# Run: shellcheck -x bin/* lib/*.sh install.sh uninstall.sh tests/*.sh
+
+# Treat sourced files as followable (we pass -x and use `source=` directives).
+external-sources=true
+
+# SC1091: "not following sourced file" — libraries are resolved at runtime.
+disable=SC1091
+
+# SC2155: declaring and assigning together is fine for our local helpers.
+disable=SC2155
+
+# SC2034: "appears unused" — false positive here by design. The bin/ entrypoints
+# set OPT_*/CCB_* configuration variables that are consumed by the lib/*.sh files
+# sourced into the same runtime; ShellCheck cannot follow that cross-file flow.
+disable=SC2034

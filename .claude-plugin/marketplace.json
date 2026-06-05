@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-code-backup",
+  "description": "Backup and restore tooling for Claude Code.",
+  "owner": {
+    "name": "claude-code-backup contributors"
+  },
+  "plugins": [
+    {
+      "name": "claude-code-backup",
+      "description": "Back up and restore Claude Code configuration via the claude-backup CLI.",
+      "category": "productivity",
+      "source": "./plugin",
+      "homepage": "https://github.com/YOUR_USERNAME/claude-code-backup"
+    }
+  ]
+}
