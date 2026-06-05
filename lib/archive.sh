@@ -3,9 +3,8 @@
 # archive.sh - Build the backup plan, staging directory, manifest and tarball.
 #
 # The orchestration entrypoint is do_backup(), which reads OPT_* globals set by
-# bin/claude-backup. It is written so that a missing Claude Code install, a
-# missing project config, or a missing iCloud directory degrade gracefully
-# rather than aborting the backup.
+# bin/claude-backup. It is written so that a missing Claude Code install or a
+# missing project config degrade gracefully rather than aborting the backup.
 #
 # Sourced by bin/claude-backup. Do not run directly.
 
@@ -13,6 +12,33 @@
 CCB_PLAN_FILES=()
 # Human-readable notes about plan entries that were absent (for the manifest).
 CCB_SKIPPED=()
+
+# State used by ccb_backup_cleanup so an interrupted/failed backup leaves nothing
+# behind. Set as globals (not locals) so the signal trap can see them.
+CCB_STAGE=""        # temporary staging directory
+CCB_TAR_PID=""      # pid of a backgrounded tar (spinner mode)
+CCB_PARTIAL=""      # archive path that is still being written (delete if abandoned)
+
+# ccb_backup_cleanup - kill any in-flight tar, remove the staging dir, and delete
+# a half-written archive. Idempotent, so it is safe on both the INT/TERM and EXIT
+# traps. It deletes the archive ONLY while CCB_PARTIAL is set; do_backup clears
+# CCB_PARTIAL once tar has finished successfully, so a completed backup is kept.
+ccb_backup_cleanup() {
+  if [ -n "${CCB_TAR_PID:-}" ]; then
+    kill "$CCB_TAR_PID" 2>/dev/null || true
+    wait "$CCB_TAR_PID" 2>/dev/null || true
+    CCB_TAR_PID=""
+  fi
+  if [ -n "${CCB_PARTIAL:-}" ]; then
+    rm -f "$CCB_PARTIAL" 2>/dev/null || true
+    CCB_PARTIAL=""
+  fi
+  if [ -n "${CCB_STAGE:-}" ]; then
+    rm -rf "$CCB_STAGE" 2>/dev/null || true
+    CCB_STAGE=""
+  fi
+  return 0
+}
 
 # build_stage <stage> - symlink each planned entry into the staging dir at its
 # top-level archive path. No data is copied and the source trees are NOT walked
@@ -56,18 +82,22 @@ archive_with_progress() {
     return $?
   fi
   local frames=( '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏' )
-  local i=0 start sz el rc pid
+  local i=0 start sz el rc
   start="$(now_epoch)"
   tar -czhf "$archive" -C "$stage" "$@" . &
-  pid=$!
-  while kill -0 "$pid" 2>/dev/null; do
+  # Publish the pid globally so an INT/TERM trap can kill this tar (it runs in
+  # the background for the spinner, so it would otherwise outlive the script and
+  # error on the staging dir the cleanup just removed).
+  CCB_TAR_PID=$!
+  while kill -0 "$CCB_TAR_PID" 2>/dev/null; do
     sz="$(human_size "$(file_size "$archive" 2>/dev/null || echo 0)")"
     el="$(( $(now_epoch) - start ))"
     printf '\r  %s  archiving… %s  (%ds)   ' "${frames[i % ${#frames[@]}]}" "$sz" "$el" >&2
     i=$((i + 1))
     sleep 1
   done
-  if wait "$pid"; then rc=0; else rc=$?; fi
+  if wait "$CCB_TAR_PID"; then rc=0; else rc=$?; fi
+  CCB_TAR_PID=""
   printf '\r%60s\r' '' >&2   # clear the spinner line
   return "$rc"
 }
@@ -213,11 +243,15 @@ do_backup() {
   fi
 
   # --- Build the staging tree (top-level symlinks only) ---------------------
-  local stage; stage="$(mktemp -d "${TMPDIR:-/tmp}/ccb-stage.XXXXXX")" \
+  CCB_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ccb-stage.XXXXXX")" \
     || die "cannot create temporary staging directory"
-  # shellcheck disable=SC2317
-  _cleanup_stage() { rm -rf "$stage"; }
-  trap _cleanup_stage EXIT
+  local stage="$CCB_STAGE"
+  # On Ctrl-C/kill we must kill the (possibly backgrounded) tar AND remove the
+  # staging dir + any half-written archive, then exit. EXIT covers normal/`die`
+  # exits; INT/TERM additionally stop and re-signal.
+  trap 'ccb_backup_cleanup; exit 130' INT
+  trap 'ccb_backup_cleanup; exit 143' TERM
+  trap 'ccb_backup_cleanup' EXIT
   build_stage "$stage"
 
   # tar --exclude flags that prune large/ephemeral subdirs at any depth.
@@ -227,7 +261,7 @@ do_backup() {
   # --- Dry run --------------------------------------------------------------
   if [ "${OPT_DRY_RUN:-0}" = "1" ]; then
     print_backup_plan "$backup_dir" "$secret_hits"
-    _cleanup_stage; trap - EXIT
+    ccb_backup_cleanup; trap - INT TERM EXIT
     return 0
   fi
 
@@ -242,28 +276,27 @@ do_backup() {
   host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo host)"
   archive="$backup_dir/claude-code-backup-${stamp}_${host}.tar.gz"
 
+  # Mark the archive as "in progress" so an interruption/failure deletes the
+  # partial file instead of leaving a corrupt backup behind.
+  CCB_PARTIAL="$archive"
+
   # -h dereferences the staged symlinks so real file contents are archived;
   # -C makes paths relative (home/…, project/…, manifest.txt) with no absolute
   # or parent components.
   # ${excludes[@]+...} so an empty array (under --full) is safe on bash 3.2.
   archive_with_progress "$archive" "$stage" ${excludes[@]+"${excludes[@]}"} || die "tar failed"
 
-  _cleanup_stage
-  trap - EXIT
-
-  # --- iCloud copy (macOS only) ---------------------------------------------
-  local icloud_copy=""
-  if [ "${OPT_ICLOUD:-0}" = "1" ]; then
-    icloud_copy="$(copy_to_icloud "$archive" || true)"
-  fi
+  # tar succeeded: the archive is complete and must be kept.
+  CCB_PARTIAL=""
+  ccb_backup_cleanup
+  trap - INT TERM EXIT
 
   if [ "$CCB_JSON" = "1" ]; then
-    emit_backup_json "$archive" "$icloud_copy" "$secret_hits"
+    emit_backup_json "$archive" "$secret_hits"
   else
     log_ok "Backup created: $archive ($(human_size "$(file_size "$archive")"))"
     [ "${#excludes[@]}" -gt 0 ] && \
       log_info "  pruned large/ephemeral dirs (caches, plugin code, venvs…); use --full to keep them"
-    [ -n "$icloud_copy" ] && log_ok "Copied to iCloud: $icloud_copy"
     printf '%s\n' "$archive"
   fi
   return 0
@@ -279,23 +312,6 @@ scan_plan_for_secrets() {
   scan_paths "${srcs[@]}"
 }
 
-# copy_to_icloud <archive> - copy the archive into iCloud Drive on macOS.
-# Prints the destination path on success; warns and returns non-zero otherwise.
-copy_to_icloud() {
-  local archive="$1" dir dest
-  if [ "${CCB_PLATFORM:-}" != "macos" ]; then
-    log_warn "--icloud ignored: not running on macOS"
-    return 1
-  fi
-  if ! dir="$(icloud_dir)"; then
-    log_warn "--icloud ignored: iCloud Drive directory not found"
-    return 1
-  fi
-  dest="$dir/claude-code-backup"
-  mkdir -p "$dest" || { log_warn "cannot create iCloud folder"; return 1; }
-  cp -p "$archive" "$dest/" || { log_warn "iCloud copy failed"; return 1; }
-  printf '%s/%s\n' "$dest" "$(basename "$archive")"
-}
 
 # print_backup_plan <backup_dir> <secret_hits> - human/JSON dry-run output.
 print_backup_plan() {
@@ -325,14 +341,13 @@ print_backup_plan() {
   return 0
 }
 
-# emit_backup_json <archive> <icloud> <secret_hits>
+# emit_backup_json <archive> <secret_hits>
 emit_backup_json() {
-  local archive="$1" icloud="$2" secret_hits="$3" has_secrets="false"
+  local archive="$1" secret_hits="$2" has_secrets="false"
   [ -n "$secret_hits" ] && has_secrets="true"
-  printf '{"status":"ok","archive":"%s","size_bytes":%s,"icloud_copy":"%s","secrets_detected":%s,"version":"%s"}\n' \
+  printf '{"status":"ok","archive":"%s","size_bytes":%s,"secrets_detected":%s,"version":"%s"}\n' \
     "$(json_escape "$archive")" \
     "$(file_size "$archive")" \
-    "$(json_escape "$icloud")" \
     "$has_secrets" \
     "$CCB_VERSION"
 }

@@ -28,6 +28,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   than bare words, drastically reducing false positives (33 → 4 on a real
   `~/.claude`).
 
+### Removed
+- The `--icloud` option and iCloud copy support (and the `icloud` `/backup`
+  keyword). Use `--dest`/`$CLAUDE_BACKUP_DIR` to target any folder, including a
+  synced one, instead.
+
 ### Fixed
 - Secret scanner no longer spawns a grep per file per pattern (which made
   `claude-backup` appear to hang on large `~/.claude` trees); it now uses a
@@ -48,7 +53,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `claude-backup-banner`: compact two-line status line (project, environment,
   backup age, MCP status, secret warning) with a configurable `banner.conf`.
 - Heuristic secret scanner (`--strict-secrets` to abort on detection).
-- `--icloud` option to copy backups to iCloud Drive on macOS.
 - `--json` machine-readable output for backup, list and restore.
 - Claude Code plugin with `/backup`, `/restore`, `/backup-status`,
   `/backup-doctor` slash commands (convenience layer over the CLI).
@@ -58,5 +62,5 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Documentation: architecture, restore safety, banner, plugin; plus
   `SECURITY.md`, `CONTRIBUTING.md`.
 
-[Unreleased]: https://github.com/YOUR_USERNAME/claude-code-backup/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/YOUR_USERNAME/claude-code-backup/releases/tag/v0.1.0
+[Unreleased]: https://github.com/dberuben/claude-code-backup/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/dberuben/claude-code-backup/releases/tag/v0.1.0

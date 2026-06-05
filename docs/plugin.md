@@ -42,7 +42,7 @@ claude --plugin-dir /path/to/claude-code-backup/plugin
 **Via a marketplace (for sharing):**
 
 ```bash
-/plugin marketplace add https://github.com/YOUR_USERNAME/claude-code-backup
+/plugin marketplace add https://github.com/dberuben/claude-code-backup
 /plugin install claude-code-backup@claude-code-backup
 ```
 
@@ -52,20 +52,21 @@ tell you to run `install.sh`.
 
 ## Commands
 
-### `/backup [icloud] [dry-run] [no-project] [strict-secrets] [include-env]`
+### `/backup [dry-run] [no-project] [no-history] [full] [strict-secrets] [include-env]`
 
 Maps keywords to CLI flags and runs `claude-backup`:
 
 | keyword | flag |
 |---------|------|
-| `icloud` | `--icloud` |
 | `dry-run` | `--dry-run` |
 | `no-project` | `--no-project` |
+| `no-history` | `--no-history` |
+| `full` | `--full` |
 | `strict-secrets` | `--strict-secrets` |
 | `include-env` | `--include-env` |
 
-Examples: `/backup`, `/backup icloud`, `/backup dry-run`,
-`/backup icloud strict-secrets`.
+Examples: `/backup`, `/backup dry-run`, `/backup no-history`,
+`/backup dry-run strict-secrets`.
 
 ### `/restore [dry-run] [home-only] [project-only]`
 

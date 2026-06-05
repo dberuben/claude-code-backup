@@ -10,5 +10,5 @@ Run the claude-code-backup self-diagnostics:
 
 Interpret the output for the user. Call out any ✗ failures first (these block
 backup/restore), then any ⚠ warnings (e.g. missing PATH entry, possible secrets
-in config, no iCloud directory). Suggest concrete fixes. If `claude-backup` is
+in config). Suggest concrete fixes. If `claude-backup` is
 not found, tell the user to run the project's `install.sh`.

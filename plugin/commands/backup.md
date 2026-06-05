@@ -1,7 +1,7 @@
 ---
 name: backup
 description: Back up Claude Code config with the claude-backup CLI
-argument-hint: "[icloud] [dry-run] [no-project] [no-history] [full] [strict-secrets] [include-env]"
+argument-hint: "[dry-run] [no-project] [no-history] [full] [strict-secrets] [include-env]"
 allowed-tools: Bash(claude-backup:*)
 ---
 
@@ -14,7 +14,6 @@ Map each space-separated keyword to a flag (ignore unknown words):
 
 | keyword          | flag               |
 |------------------|--------------------|
-| `icloud`         | `--icloud`         |
 | `dry-run`        | `--dry-run`        |
 | `no-project`     | `--no-project`     |
 | `no-history`     | `--no-history`     |
@@ -25,9 +24,9 @@ Map each space-separated keyword to a flag (ignore unknown words):
 Then run `claude-backup` with the mapped flags via the Bash tool, for example:
 
 - `/backup` → `claude-backup`
-- `/backup icloud` → `claude-backup --icloud`
 - `/backup dry-run` → `claude-backup --dry-run`
-- `/backup icloud strict-secrets` → `claude-backup --icloud --strict-secrets`
+- `/backup no-history` → `claude-backup --no-history`
+- `/backup dry-run strict-secrets` → `claude-backup --dry-run --strict-secrets`
 
 Report the resulting archive path and surface any secret warnings the tool
 prints. If the `claude-backup` command is not found, tell the user to run the

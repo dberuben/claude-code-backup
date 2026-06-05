@@ -30,7 +30,7 @@ bin/claude-backup          bin/claude-restore        bin/claude-backup-banner
   formatting, backup-directory resolution and `confirm()`.
 - **`lib/platform.sh`** isolates every BSD-vs-GNU difference: `detect_platform`
   sets `CCB_PLATFORM` from `uname -s`, and `file_mtime` / `file_size` /
-  `os_version` / `icloud_dir` branch on it. **All** platform conditionals live
+  `os_version` branch on it. **All** platform conditionals live
   here so the rest of the code stays portable.
 - **`lib/security.sh`** is the heuristic secret scanner. It never prints secret
   values — only file paths and which pattern matched.

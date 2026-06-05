@@ -37,8 +37,10 @@ configuration. That configuration commonly contains sensitive material:
   gpg --decrypt claude-code-backup-XXXX.tar.gz.gpg > restore.tar.gz
   ```
 
-- If you use `--icloud`, remember the archive then syncs to Apple's servers and
-  to every device on that iCloud account. Only opt in if that is acceptable.
+- If you place backups in a synced/cloud folder (Dropbox, Nextcloud, a network
+  share…), remember the archive — which may contain secrets — is then copied to
+  that service and every device attached to it. Prefer a local, encrypted
+  location, or encrypt the archive first.
 
 ## The built-in secret scanner
 

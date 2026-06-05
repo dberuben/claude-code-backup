@@ -12,9 +12,10 @@ _claude-backup() {
   )
   opts=(
     '--dest[Backup destination directory]:directory:_files -/'
-    '--icloud[Also copy to iCloud Drive (macOS)]'
     '--include-project[Include project config]'
     '--no-project[Exclude project config]'
+    '--no-history[Exclude projects/ (history)]'
+    '--full[Include everything (no pruning)]'
     '--include-env[Include .env.claude/.envrc]'
     '--strict-secrets[Abort if secrets detected]'
     '--dry-run[Show what would be backed up]'

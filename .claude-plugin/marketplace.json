@@ -11,7 +11,7 @@
       "description": "Back up and restore Claude Code configuration via the claude-backup CLI.",
       "category": "productivity",
       "source": "./plugin",
-      "homepage": "https://github.com/YOUR_USERNAME/claude-code-backup"
+      "homepage": "https://github.com/dberuben/claude-code-backup"
     }
   ]
 }

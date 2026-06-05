@@ -17,7 +17,7 @@ shell over clever shell. Contributions of any size are welcome.
 ## Development setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-code-backup.git
+git clone https://github.com/dberuben/claude-code-backup.git
 cd claude-code-backup
 ./install.sh --prefix "$PWD/.dev"      # optional; or just run bin/ directly
 bash tests/run.sh                      # run the full suite
@@ -54,7 +54,7 @@ Use the [Conventional Commits](https://www.conventionalcommits.org/) format:
 ```
 feat(banner): add BANNER_STYLE=verbose layout
 fix(restore): reject symlinks with absolute targets
-docs(readme): clarify iCloud sync implications
+docs(readme): clarify synced-folder security implications
 test(backup): cover --include-env path
 chore(release): bump version to 0.2.0
 ```

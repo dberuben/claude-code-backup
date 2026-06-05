@@ -62,4 +62,24 @@ ASSERT_MSG="ignores the word 'token'/'secret' in prose"; assert_false scanf "$wo
 ASSERT_MSG="ignores 'password'/'authorization' in prose"; assert_false scanf "$work/prose2.md"
 rm -rf "$work"
 
+# --- interruption cleanup: kills tar, drops partial archive + stage ----------
+cleanup_probe() {
+  ( export CCB_LIB_DIR="$REPO_DIR/lib"; . "$CCB_LIB_DIR/common.sh"; . "$CCB_LIB_DIR/archive.sh"
+    local t; t="$(mktemp -d)"
+    CCB_STAGE="$t/stage"; mkdir -p "$CCB_STAGE"
+    CCB_PARTIAL="$t/partial.tar.gz"; echo half > "$CCB_PARTIAL"
+    sleep 30 & CCB_TAR_PID=$!
+    ccb_backup_cleanup
+    # report what survived
+    [ -d "$t/stage" ]        && echo "stage-left"
+    [ -f "$t/partial.tar.gz" ] && echo "partial-left"
+    kill -0 "$CCB_TAR_PID" 2>/dev/null && echo "tar-alive"
+    rm -rf "$t"
+  )
+}
+probe_out="$(cleanup_probe)"
+ASSERT_MSG="cleanup removes the staging dir";       assert_false grep -q 'stage-left'   <<<"$probe_out"
+ASSERT_MSG="cleanup removes the partial archive";   assert_false grep -q 'partial-left' <<<"$probe_out"
+ASSERT_MSG="cleanup kills the in-flight tar";       assert_false grep -q 'tar-alive'    <<<"$probe_out"
+
 finish

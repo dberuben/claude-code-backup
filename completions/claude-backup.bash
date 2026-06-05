@@ -11,7 +11,7 @@ _claude_backup() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   local subcommands="list doctor banner"
-  local opts="--dest --icloud --include-project --no-project --include-env \
+  local opts="--dest --include-project --no-project --no-history --full --include-env \
     --strict-secrets --dry-run --json --quiet --help --version"
 
   # Complete a directory after --dest.

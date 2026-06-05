@@ -66,12 +66,3 @@ file_size() {
     *)     stat -c %s "$path" 2>/dev/null ;;
   esac
 }
-
-# icloud_dir - print the path to the iCloud Drive root on macOS.
-# Prints nothing and returns non-zero on other platforms or when unavailable.
-icloud_dir() {
-  [ "${CCB_PLATFORM:-}" = "macos" ] || return 1
-  local dir="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
-  [ -d "$dir" ] || return 1
-  printf '%s\n' "$dir"
-}

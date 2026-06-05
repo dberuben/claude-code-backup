@@ -1,3 +1,14 @@
+<p align="center">
+  <img src="docs/assets/header.png" alt="claude-code-backup — safe, cross-platform backup &amp; restore for Claude Code" width="100%">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <img alt="Platform: macOS | Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue.svg">
+  <img alt="Shell: bash" src="https://img.shields.io/badge/shell-bash-121011.svg?logo=gnu-bash&logoColor=white">
+  <img alt="Dependencies: none" src="https://img.shields.io/badge/deps-zero-success.svg">
+</p>
+
 # claude-code-backup
 
 A simple, safe, cross-platform backup & restore tool for [Claude Code](https://claude.com/claude-code).
@@ -34,7 +45,7 @@ Check your machine any time with `claude-backup doctor`.
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-code-backup.git
+git clone https://github.com/dberuben/claude-code-backup.git
 cd claude-code-backup
 ./install.sh
 ```
@@ -69,13 +80,13 @@ You can also run the tools straight from the checkout without installing —
 On your existing machine:
 
 ```bash
-claude-backup --icloud         # back up, and also copy to iCloud Drive (macOS)
+claude-backup                  # back up to ~/Backups/claude-code
 ```
 
 On a new machine:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-code-backup.git
+git clone https://github.com/dberuben/claude-code-backup.git
 cd claude-code-backup
 ./install.sh
 claude-restore                 # restores from your latest backup
@@ -105,30 +116,22 @@ Destination precedence: `--dest` › `$CLAUDE_BACKUP_DIR` › `~/Backups/claude-
 
 Archive name: `claude-code-backup-YYYY-MM-DD_HH-MM-SS_HOSTNAME.tar.gz`.
 
-### iCloud (macOS)
+### Choosing where backups go
+
+Point backups at any directory — a local folder, an encrypted volume, a USB
+stick, or a synced/cloud folder (Dropbox, Nextcloud, a network share…):
 
 ```bash
-claude-backup --icloud
-```
-
-Writes the archive to `~/Backups/claude-code` **and** copies it to
-`~/Library/Mobile Documents/com~apple~CloudDocs/claude-code-backup/`. On Linux
-the flag is accepted but skipped with a notice.
-
-> ⚠️ iCloud syncs the archive — which may contain secrets — to Apple's servers
-> and all your devices. Only use `--icloud` if that is acceptable to you.
-
-### Linux storage example
-
-There is no iCloud on Linux; point backups at any directory you like — an
-encrypted volume, a synced folder, or a USB stick:
-
-```bash
-export CLAUDE_BACKUP_DIR="$HOME/Nextcloud/claude-code"   # or any path
+export CLAUDE_BACKUP_DIR="$HOME/Backups/claude-code"   # default
 claude-backup
-# or one-off:
-claude-backup --dest /media/$USER/usbkey/claude-code
+# or one-off, e.g. an external drive:
+claude-backup --dest /Volumes/USBKEY/claude-code       # macOS
+claude-backup --dest /media/$USER/usbkey/claude-code   # Linux
 ```
+
+> ⚠️ If you target a **synced** folder, the archive — which may contain secrets —
+> is copied to that service and every device attached to it. Prefer a local,
+> encrypted location, or encrypt the archive first (see [SECURITY.md](SECURITY.md)).
 
 ## Restore examples
 
@@ -184,7 +187,7 @@ claude --plugin-dir /path/to/claude-code-backup/plugin
 …or share it via a marketplace (see [docs/plugin.md](docs/plugin.md)):
 
 ```bash
-/plugin marketplace add https://github.com/YOUR_USERNAME/claude-code-backup
+/plugin marketplace add https://github.com/dberuben/claude-code-backup
 /plugin install claude-code-backup@claude-code-backup
 ```
 
@@ -192,7 +195,7 @@ Commands:
 
 | Command | Runs |
 |---------|------|
-| `/backup [icloud] [dry-run] [no-project] [strict-secrets] [include-env]` | `claude-backup` |
+| `/backup [dry-run] [no-project] [no-history] [full] [strict-secrets] [include-env]` | `claude-backup` |
 | `/restore [dry-run] [home-only] [project-only]` | `claude-restore` (never `--force` automatically) |
 | `/backup-status` | `claude-backup list` + `claude-backup-banner` |
 | `/backup-doctor` | `claude-backup doctor` |
@@ -315,8 +318,6 @@ reinstall is needed.)
 - **Restore says "refusing to restore an unsafe archive"** — the archive
   contains absolute or `..` paths and was rejected on purpose; only restore
   archives produced by this tool.
-- **`--icloud` did nothing** — you're on Linux, or iCloud Drive isn't set up;
-  the flag is skipped with a notice. Use `--dest`/`$CLAUDE_BACKUP_DIR` instead.
 - **MCP/auth errors after restore** — re-authenticate; some tokens live outside
   the backup (see above).
 - Run `claude-backup doctor` for a full environment report.

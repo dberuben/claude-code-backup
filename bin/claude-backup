@@ -46,7 +46,6 @@ USAGE:
 
 OPTIONS (backup):
   --dest <path>        Backup destination directory
-  --icloud             Also copy backup to iCloud Drive (macOS only)
   --include-project    Include current project config (default: true)
   --no-project         Do not include project config
   --no-history         Exclude projects/ (conversation history; large)
@@ -115,11 +114,6 @@ do_doctor() {
     _chk ok "No obvious secrets detected by the heuristic scanner"
   fi
 
-  if [ "$CCB_PLATFORM" = "macos" ]; then
-    if icloud_dir >/dev/null 2>&1; then _chk ok "iCloud Drive available"
-    else _chk warn "iCloud Drive directory not found"; fi
-  fi
-
   case ":$PATH:" in
     *":$HOME/.local/bin:"*) _chk ok "PATH contains ~/.local/bin" ;;
     *) _chk warn "PATH does not contain ~/.local/bin (add it for the CLI)" ;;
@@ -130,7 +124,7 @@ do_doctor() {
 # ---------------------------------------------------------------------------
 # argument parsing / dispatch
 # ---------------------------------------------------------------------------
-OPT_DEST=""; OPT_ICLOUD=0; OPT_INCLUDE_PROJECT=1; OPT_INCLUDE_ENV=0
+OPT_DEST=""; OPT_INCLUDE_PROJECT=1; OPT_INCLUDE_ENV=0
 OPT_STRICT=0; OPT_DRY_RUN=0; OPT_FULL=0; OPT_NO_HISTORY=0
 
 # Subcommand dispatch on the first argument.
@@ -150,7 +144,6 @@ esac
 while [ $# -gt 0 ]; do
   case "$1" in
     --dest)            OPT_DEST="${2:-}"; shift ;;
-    --icloud)          OPT_ICLOUD=1 ;;
     --include-project) OPT_INCLUDE_PROJECT=1 ;;
     --no-project)      OPT_INCLUDE_PROJECT=0 ;;
     --no-history)      OPT_NO_HISTORY=1 ;;
