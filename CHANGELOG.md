@@ -7,8 +7,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- Restore now warns when Claude Code appears to be running (quit it first) and
-  reminds you to reinstall/reload plugins afterwards.
+- Restore now warns when Claude Code appears to be running (quit it first).
+- After a restore, `claude-restore` writes `<backup-dir>/restore-plugins.txt`
+  with ready-to-paste `/plugin marketplace add …` + `/plugin install …` +
+  `/reload-plugins` commands derived from the restored plugin manifests, so a
+  new machine can recover its plugins (which aren't part of the backup).
 
 ### Changed
 - Restore's pre-restore snapshot uses the fast symlink + `tar -czh` + pruning

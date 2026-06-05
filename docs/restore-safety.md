@@ -72,8 +72,20 @@ After a restore, if Claude Code or an MCP server reports an auth error, simply
 re-authenticate — your other settings, commands, agents, hooks and skills are
 already back in place.
 
-**Plugins.** Backups prune installed plugin *code* by default but keep the
-manifests (`plugins/installed_plugins.json`, `plugins/known_marketplaces.json`).
-After restoring, reinstall plugins from those lists (`/plugin marketplace add …`
-then `/plugin install …`). A backup made with `--full` includes the plugin code,
-so no reinstall is needed in that case.
+**Plugins.** Backups prune installed plugin *code* and marketplace clones by
+default but keep the manifests (`plugins/installed_plugins.json`,
+`plugins/known_marketplaces.json`). On a fresh machine Claude Code will report
+`cache-miss` for those marketplaces until they are re-added. To make this easy,
+`claude-restore` reads the restored manifests and writes
+**`<backup-dir>/restore-plugins.txt`** containing ready-to-paste commands:
+
+```text
+/plugin marketplace add anthropics/claude-plugins-official
+/plugin marketplace add https://github.com/you/your-marketplace.git
+/reload-plugins
+# …and explicit `/plugin install name@marketplace` lines as a fallback
+```
+
+Paste those into Claude Code, then run `/reload-plugins`. A backup made with
+`--full` includes the plugin code and marketplace clones, so no recovery is
+needed in that case.

@@ -69,6 +69,31 @@ assert_status 1 in_project "$BIN/claude-restore" \
 rm -rf "$payload"
 teardown_sandbox
 
+# --- restore writes plugin-recovery commands from restored manifests ------
+setup_sandbox
+mkdir -p "$HOME/.claude/plugins"
+cat > "$HOME/.claude/plugins/known_marketplaces.json" <<'JSON'
+{ "official": { "source": { "source": "github", "repo": "anthropics/claude-plugins-official" } },
+  "ccb": { "source": { "source": "git", "url": "https://github.com/dberuben/claude-code-backup.git" } } }
+JSON
+cat > "$HOME/.claude/plugins/installed_plugins.json" <<'JSON'
+{ "version": 2, "plugins": { "context7@official": [ { "scope": "user" } ] } }
+JSON
+in_project "$BIN/claude-backup" --no-project --quiet >/dev/null 2>&1
+rm -rf "$HOME/.claude" "$HOME/.claude.json"
+in_project "$BIN/claude-restore" --home-only --force --quiet >/dev/null 2>&1
+rec="$CLAUDE_BACKUP_DIR/restore-plugins.txt"
+assert_file "$rec"
+ASSERT_MSG="recovery lists github marketplace (owner/repo)"
+assert_grep '/plugin marketplace add anthropics/claude-plugins-official' "$rec"
+ASSERT_MSG="recovery lists git-url marketplace"
+assert_grep 'marketplace add https://github.com/dberuben/claude-code-backup.git' "$rec"
+ASSERT_MSG="recovery includes /reload-plugins"
+assert_grep '/reload-plugins' "$rec"
+ASSERT_MSG="recovery lists explicit plugin install"
+assert_grep '/plugin install context7@official' "$rec"
+teardown_sandbox
+
 # --- restore --project-only leaves home untouched -------------------------
 setup_sandbox
 in_project "$BIN/claude-backup" --quiet >/dev/null 2>&1
