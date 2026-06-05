@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-05
+
 ### Added
 - Restore now warns when Claude Code appears to be running (quit it first).
 - After a restore, `claude-restore` writes `<backup-dir>/restore-plugins.txt`
@@ -54,5 +56,6 @@ First release.
 - Documentation: architecture, restore safety, banner, plugin; plus
   `SECURITY.md`, `CONTRIBUTING.md`.
 
-[Unreleased]: https://github.com/dberuben/claude-code-backup/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/dberuben/claude-code-backup/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/dberuben/claude-code-backup/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/dberuben/claude-code-backup/releases/tag/v0.1.0
