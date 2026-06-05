@@ -54,20 +54,6 @@ build_stage() {
   done
 }
 
-# ccb_tar_excludes - echo the tar --exclude flags (one per line) for the pruned
-# names under the current options. Empty under --full. For each NAME we emit
-# both `NAME` (bsdtar basename match) and `*/NAME` (GNU tar nested match) so the
-# pruning is portable and applies at any depth.
-ccb_tar_excludes() {
-  [ "${OPT_FULL:-0}" = "1" ] && return 0
-  local names="$CCB_EXCLUDE_NAMES" n
-  [ "${OPT_NO_HISTORY:-0}" = "1" ] && names="$names projects"
-  for n in $names; do
-    printf -- '--exclude=%s\n' "$n"
-    printf -- '--exclude=*/%s\n' "$n"
-  done
-}
-
 # archive_with_progress <archive> <stage> <exclude-arg...> - tar+gzip the stage,
 # dereferencing symlinks (-h) and applying the exclude args. Shows a live
 # spinner with the growing archive size on a TTY; silent otherwise. Returns

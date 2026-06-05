@@ -34,6 +34,30 @@ n="$(find "$CLAUDE_BACKUP_DIR/pre-restore" -name 'pre-restore-*.tar.gz' 2>/dev/n
 ASSERT_MSG="pre-restore backup is created"; assert_true test "$n" -ge "1"
 teardown_sandbox
 
+# --- pre-restore backup prunes (symlink+tar, not a full cp -R) ------------
+setup_sandbox
+mkdir -p "$HOME/.claude/plugins/cache/big"
+printf 'BIG\n' > "$HOME/.claude/plugins/cache/big/x"
+in_project "$BIN/claude-backup" --quiet >/dev/null 2>&1
+in_project "$BIN/claude-restore" --home-only --force --quiet >/dev/null 2>&1
+pre="$(find "$CLAUDE_BACKUP_DIR/pre-restore" -name 'pre-restore-*.tar.gz' | head -n1)"
+ASSERT_MSG="pre-restore archive exists"; assert_true test -n "$pre"
+ASSERT_MSG="pre-restore prunes plugins/cache (not a raw full copy)"
+assert_false grep -q 'plugins/cache/big' <<<"$(tar -tzf "$pre" 2>/dev/null)"
+ASSERT_MSG="pre-restore still captures real config (settings.json)"
+assert_true grep -q 'home/.claude/settings.json' <<<"$(tar -tzf "$pre" 2>/dev/null)"
+teardown_sandbox
+
+# --- restore plan distinguishes overwrite (file) vs merge (dir) -----------
+setup_sandbox
+in_project "$BIN/claude-backup" --quiet >/dev/null 2>&1
+plan="$(in_project "$BIN/claude-restore" --dry-run 2>&1)"
+ASSERT_MSG="plan marks ~/.claude.json as overwrite (single file)"
+assert_true grep -Eq 'overwrite:.*/\.claude\.json' <<<"$plan"
+ASSERT_MSG="plan marks ~/.claude as merge (directory)"
+assert_true grep -Eq 'merge into:.*/\.claude($|[^.])' <<<"$plan"
+teardown_sandbox
+
 # --- restore refuses an archive with absolute paths -----------------------
 setup_sandbox
 payload="$(mktemp -d)"; mkdir -p "$payload/home"; printf 'x\n' > "$payload/home/.claude.json"

@@ -135,6 +135,21 @@ ccb_is_excluded() {
   return 1
 }
 
+# ccb_tar_excludes - echo the tar --exclude flags (one per line) for the pruned
+# names under the current options. Empty under --full. For each NAME we emit
+# both `NAME` (bsdtar basename match) and `*/NAME` (GNU tar nested match) so the
+# pruning is portable and applies at any depth. Used by both backup and the
+# pre-restore snapshot.
+ccb_tar_excludes() {
+  [ "${OPT_FULL:-0}" = "1" ] && return 0
+  local names="$CCB_EXCLUDE_NAMES" n
+  [ "${OPT_NO_HISTORY:-0}" = "1" ] && names="$names projects"
+  for n in $names; do
+    printf -- '--exclude=%s\n' "$n"
+    printf -- '--exclude=*/%s\n' "$n"
+  done
+}
+
 # ---------------------------------------------------------------------------
 # Backup directory resolution
 # ---------------------------------------------------------------------------

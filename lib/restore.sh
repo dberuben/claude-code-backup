@@ -140,21 +140,34 @@ create_pre_restore_backup() {
   mkdir -p "$dir" || { log_warn "cannot create pre-restore dir: $dir"; return 1; }
   stage="$(mktemp -d "${TMPDIR:-/tmp}/ccb-prerestore.XXXXXX")" || return 1
 
+  # Symlink the targets into the staging dir (no data copy) and let `tar -czh`
+  # dereference them, pruning the same large/ephemeral dirs as a normal backup.
+  # This avoids copying a multi-GB ~/.claude to a temp dir just to snapshot it.
   local t name
   for t in "${targets[@]}"; do
-    # Prefix home vs project to keep names unique inside the pre-restore tar.
     case "$t" in
       "$HOME"/*) name="home/${t#"$HOME"/}" ;;
       *)         name="project/$(basename "$t")" ;;
     esac
     mkdir -p "$stage/$(dirname "$name")"
-    cp -R "$t" "$stage/$name"
+    ln -s "$t" "$stage/$name"
   done
+
+  local excludes=() line
+  while IFS= read -r line; do [ -n "$line" ] && excludes+=("$line"); done < <(ccb_tar_excludes)
 
   stamp="$(local_timestamp)"
   host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo host)"
   archive="$dir/pre-restore-${stamp}_${host}.tar.gz"
-  tar -czf "$archive" -C "$stage" . && log_ok "Pre-restore backup: $archive"
+  # ${excludes[@]+...} keeps an empty array safe under bash 3.2.
+  if tar -czhf "$archive" -C "$stage" ${excludes[@]+"${excludes[@]}"} .; then
+    log_ok "Pre-restore backup: $archive"
+  else
+    rm -f "$archive" 2>/dev/null || true
+    log_warn "pre-restore tar failed"
+    rm -rf "$stage"
+    return 1
+  fi
   rm -rf "$stage"
 }
 
@@ -174,6 +187,15 @@ _merge_copy() {
     mkdir -p "$(dirname "$dest")"
     cp -p "$src" "$dest"
   fi
+}
+
+# claude_is_running - best-effort check for a live Claude Code process. Uses
+# pgrep when present (macOS + Linux); skips silently otherwise. Restoring under
+# a running Claude Code is risky: it rewrites ~/.claude.json continuously and
+# may clobber the restore or not see it until restart.
+claude_is_running() {
+  command -v pgrep >/dev/null 2>&1 || return 1
+  pgrep -x claude >/dev/null 2>&1
 }
 
 # do_restore - main restore routine. Reads OPT_* globals.
@@ -232,12 +254,24 @@ do_restore() {
   log_step "Restore plan (from $(basename "$archive"))"
   for entry in "${plan[@]}"; do
     src="${entry%%|*}"; dest="${entry##*|}"
-    if [ -e "$dest" ]; then
-      log_info "  overwrite/merge: $dest"
+    if [ ! -e "$dest" ]; then
+      log_info "  create:        $dest"
+    elif [ -d "$src" ]; then
+      # Directory: backup contents are merged in; local-only files are kept.
+      log_info "  merge into:    $dest"
     else
-      log_info "  create:          $dest"
+      # Single file: fully replaced by the backup's version (a revert).
+      log_info "  overwrite:     $dest"
     fi
   done
+
+  # Restoring under a running Claude Code can be clobbered or ignored until it
+  # restarts; warn so the user can quit it first.
+  if claude_is_running; then
+    log_warn "Claude Code appears to be RUNNING."
+    log_warn "  Quit it before restoring, otherwise it may overwrite ~/.claude.json"
+    log_warn "  with its in-memory state, and changes may not apply until restart."
+  fi
 
   if [ "${OPT_DRY_RUN:-0}" = "1" ]; then
     log_info "Dry run - no files were changed."
@@ -275,6 +309,11 @@ do_restore() {
       "$(json_escape "$archive")" "${#plan[@]}" "$CCB_VERSION"
   else
     log_ok "Restore complete."
+    log_info "Next steps:"
+    log_info "  • If Claude Code was open, restart it to pick up the restored config."
+    log_info "  • Plugin code is not part of a backup — reinstall from the restored"
+    log_info "    manifest: see ~/.claude/plugins/installed_plugins.json, then"
+    log_info "    /plugin marketplace add … and /plugin install … (or /reload-plugins)."
     log_warn "Some credentials may need re-authentication: OAuth tokens, Keychain"
     log_warn "entries, OS credential stores, and values held in external files or"
     log_warn "environment variables are NOT guaranteed to be restored. If Claude"

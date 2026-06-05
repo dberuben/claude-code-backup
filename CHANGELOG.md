@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Restore now warns when Claude Code appears to be running (quit it first) and
+  reminds you to reinstall/reload plugins afterwards.
+
+### Changed
+- Restore's pre-restore snapshot uses the fast symlink + `tar -czh` + pruning
+  path (no multi-GB `cp -R`), matching the main backup.
+- Restore plan distinguishes `overwrite:` (single files, a revert) from
+  `merge into:` (directories) so the effect is clear.
+- README trimmed to the essentials; full detail lives in `docs/`.
+
 ## [0.1.0] - 2026-06-05
 
 First release.
