@@ -7,6 +7,10 @@ _claude-backup() {
   local -a subcommands opts
   subcommands=(
     'list:List existing backups'
+    'verify:Check an archive (gzip + checksum)'
+    'push:Push an existing backup to a remote'
+    'schedule:Install a recurring backup'
+    'unschedule:Remove the recurring backup'
     'doctor:Diagnose the environment'
     'banner:Print the status banner'
   )
@@ -18,6 +22,13 @@ _claude-backup() {
     '--full[Include everything (no pruning)]'
     '--include-env[Include .env.claude/.envrc]'
     '--strict-secrets[Abort if secrets detected]'
+    "--remote[Push the archive to a remote]:spec:"
+    '--from[Operate on a specific archive]:archive:_files'
+    '--daily[Schedule daily]'
+    '--weekly[Schedule weekly]'
+    '--hourly[Schedule hourly]'
+    '--at[Time HH:MM for schedule]:time:'
+    '--status[Show schedule status]'
     '--dry-run[Show what would be backed up]'
     '--json[Machine-readable output]'
     '--quiet[Minimal output]'
@@ -34,6 +45,8 @@ _claude-restore() {
   _arguments \
     '--from[Restore from archive]:archive:_files' \
     '--list[List available backups]' \
+    '--list-contents[Show categories in an archive]' \
+    '--only[Restore only these categories]:categories:(settings agents commands hooks skills mcp claude-md history plugins)' \
     '--dry-run[Show restore plan only]' \
     '--force[Do not ask confirmation]' \
     '--home-only[Restore only global config]' \

@@ -5,7 +5,7 @@ set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 fail=0
 
-for t in test-backup.sh test-restore.sh test-linux-paths.sh test-macos-paths.sh test-banner.sh test-compat.sh; do
+for t in test-backup.sh test-restore.sh test-verify.sh test-remote.sh test-restore-selective.sh test-schedule.sh test-linux-paths.sh test-macos-paths.sh test-banner.sh test-compat.sh; do
   echo "-------------------------------------------------------------------"
   bash "$DIR/$t" || fail=1
 done

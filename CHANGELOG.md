@@ -6,6 +6,32 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-14
+
+### Added
+- **Integrity**: every backup now writes a `<archive>.sha256` sidecar, and a new
+  `claude-backup verify [--from <archive>]` re-checks the gzip stream, the
+  checksum and the archive's path safety (`--json` supported).
+- **Off-site copy**: `--remote 'cmd:<command>'` (and a `claude-backup push`
+  subcommand) push a finished backup through any command — `{}` is replaced by
+  the archive path, otherwise it is appended. Honours `CLAUDE_BACKUP_REMOTE`.
+  Pushes the `.sha256` too; a failed push never deletes the local backup.
+- **Scheduling**: `claude-backup schedule [--daily|--weekly|--hourly] [--at HH:MM]`
+  installs a recurring backup via launchd (macOS) or a systemd user timer with a
+  crontab fallback (Linux); `--status` and `claude-backup unschedule` manage it.
+  Options after `--` are passed to each scheduled run.
+- **Selective restore**: `claude-restore --only <cat[,cat…]>` restores just the
+  chosen categories (`settings agents commands hooks skills mcp claude-md
+  history plugins`), and `--list-contents` shows what an archive holds.
+- **curl | bash install**: `install.sh` now bootstraps its sources when piped
+  (downloads the repo tarball); overridable via `CCB_REPO` / `CCB_REF`.
+
+### Changed
+- `_chk` status helper moved into `lib/common.sh` (shared by doctor, verify,
+  schedule status and the selective-restore listing).
+- Updated bash/zsh completions and `--help` for the new subcommands and flags.
+- Test suite expanded with verify, remote, selective-restore and schedule suites.
+
 ## [0.1.1] - 2026-06-05
 
 ### Added
@@ -56,6 +82,7 @@ First release.
 - Documentation: architecture, restore safety, banner, plugin; plus
   `SECURITY.md`, `CONTRIBUTING.md`.
 
-[Unreleased]: https://github.com/dberuben/claude-code-backup/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/dberuben/claude-code-backup/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dberuben/claude-code-backup/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/dberuben/claude-code-backup/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/dberuben/claude-code-backup/releases/tag/v0.1.0

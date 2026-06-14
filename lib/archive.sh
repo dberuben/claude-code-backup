@@ -277,10 +277,28 @@ do_backup() {
   ccb_backup_cleanup
   trap - INT TERM EXIT
 
+  # --- Checksum sidecar -----------------------------------------------------
+  # Write "<hash>  <basename>" next to the archive so integrity can be checked
+  # later (claude-backup verify) and by standard `shasum -c` / `sha256sum -c`.
+  local sum=""
+  if ccb_have_sha256; then
+    sum="$(ccb_sha256 "$archive")"
+    if [ -n "$sum" ]; then
+      printf '%s  %s\n' "$sum" "$(basename "$archive")" >"$archive.sha256"
+    fi
+  fi
+
+  # --- Optional push to a remote -------------------------------------------
+  # Never fatal: a failed upload must not invalidate a good local backup.
+  if [ -n "${OPT_REMOTE:-}" ]; then
+    ccb_push_remote "$archive" "$OPT_REMOTE" || log_warn "remote push failed; local backup kept"
+  fi
+
   if [ "$CCB_JSON" = "1" ]; then
-    emit_backup_json "$archive" "$secret_hits"
+    emit_backup_json "$archive" "$secret_hits" "$sum"
   else
     log_ok "Backup created: $archive ($(human_size "$(file_size "$archive")"))"
+    [ -n "$sum" ] && log_info "  checksum: $archive.sha256"
     [ "${#excludes[@]}" -gt 0 ] && \
       log_info "  pruned large/ephemeral dirs (caches, plugin code, venvs…); use --full to keep them"
     printf '%s\n' "$archive"
@@ -327,13 +345,14 @@ print_backup_plan() {
   return 0
 }
 
-# emit_backup_json <archive> <secret_hits>
+# emit_backup_json <archive> <secret_hits> [sha256]
 emit_backup_json() {
-  local archive="$1" secret_hits="$2" has_secrets="false"
+  local archive="$1" secret_hits="$2" sum="${3:-}" has_secrets="false"
   [ -n "$secret_hits" ] && has_secrets="true"
-  printf '{"status":"ok","archive":"%s","size_bytes":%s,"secrets_detected":%s,"version":"%s"}\n' \
+  printf '{"status":"ok","archive":"%s","size_bytes":%s,"sha256":"%s","secrets_detected":%s,"version":"%s"}\n' \
     "$(json_escape "$archive")" \
     "$(file_size "$archive")" \
+    "$(json_escape "$sum")" \
     "$has_secrets" \
     "$CCB_VERSION"
 }

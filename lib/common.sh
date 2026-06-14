@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 # Version
 # ---------------------------------------------------------------------------
-CCB_VERSION="0.1.1"
+CCB_VERSION="0.2.0"
 
 # ---------------------------------------------------------------------------
 # Library loading
@@ -23,6 +23,8 @@ CCB_VERSION="0.1.1"
 . "$CCB_LIB_DIR/platform.sh"
 # shellcheck source=security.sh
 . "$CCB_LIB_DIR/security.sh"
+# shellcheck source=remote.sh
+. "$CCB_LIB_DIR/remote.sh"
 
 detect_platform
 
@@ -104,6 +106,38 @@ human_size() {
   elif [ "$b" -lt 1073741824 ];  then printf '%dM' "$((b / 1048576))"
   else                                printf '%dG' "$((b / 1073741824))"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Checksums (no external dependency beyond the system's sha256 tool)
+# ---------------------------------------------------------------------------
+# ccb_have_sha256 - return 0 if a SHA-256 tool is available on this system.
+ccb_have_sha256() {
+  command -v shasum >/dev/null 2>&1 || command -v sha256sum >/dev/null 2>&1
+}
+
+# ccb_sha256 <file> - print the lowercase hex SHA-256 of <file>, or nothing when
+# no tool is available. Handles both BSD (shasum, macOS) and GNU (sha256sum).
+ccb_sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | awk '{print $1}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Archive path → restore destination
+# ---------------------------------------------------------------------------
+# ccb_relpath_to_dest <relpath> - map an in-archive path (home/… or project/…)
+# to its on-disk restore destination. home/ → $HOME/, project/ → $PWD/. Prints
+# nothing for paths outside those two trees (caller treats that as "skip").
+ccb_relpath_to_dest() {
+  case "$1" in
+    home/*)    printf '%s/%s\n' "$HOME" "${1#home/}" ;;
+    project/*) printf '%s/%s\n' "$PWD"  "${1#project/}" ;;
+    *)         : ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -198,4 +232,14 @@ confirm() {
 # require_cmd <cmd> - die if a required command is missing.
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+# _chk <ok|warn|fail> <message> - print a checkmark/warning/cross status line.
+# Shared by doctor, verify, schedule status and selective-restore listing.
+_chk() {
+  case "$1" in
+    ok)   printf '  %s✓%s %s\n'  "$C_GREEN"  "$C_RESET" "$2" >&2 ;;
+    warn) printf '  %s⚠%s %s\n'  "$C_YELLOW" "$C_RESET" "$2" >&2 ;;
+    fail) printf '  %s✗%s %s\n'  "$C_RED"    "$C_RESET" "$2" >&2 ;;
+  esac
 }
