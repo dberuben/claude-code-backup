@@ -22,6 +22,14 @@ control, and restores it on the same or a new machine.
 
 ## Install
 
+One-liner (downloads sources, installs to `~/.local`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dberuben/claude-code-backup/main/install.sh | bash
+```
+
+Or from a checkout:
+
 ```bash
 git clone https://github.com/dberuben/claude-code-backup.git
 cd claude-code-backup
@@ -40,12 +48,51 @@ claude-backup doctor
 claude-backup                      # back up → ~/Backups/claude-code
 claude-backup --dry-run            # preview only, writes nothing
 claude-backup list                 # list existing backups
+claude-backup verify               # check the latest archive (gzip + checksum)
 claude-restore                     # restore the latest backup (asks first)
 ```
 
 Handy flags: `--no-history` (skip the large `projects/` history), `--full`
 (everything), `--no-project`, `--dest <dir>`, `--strict-secrets`, `--json`.
 Full reference: `claude-backup --help`.
+
+Every backup writes a `<archive>.sha256` sidecar; `claude-backup verify`
+re-checks the gzip stream, the checksum and the path safety of an archive.
+
+### Off-site copy (opt-in)
+
+Backups are local by default. Push them anywhere with a command of your choice —
+`{}` is replaced by the archive path (no extra dependency required):
+
+```bash
+claude-backup --remote 'cmd:rclone copy {} mydrive:claude/'
+claude-backup --remote 'cmd:rsync -a {} nas:/backups/'
+claude-backup push --remote 'cmd:aws s3 cp {} s3://bucket/claude/'   # push the latest
+```
+
+Set `CLAUDE_BACKUP_REMOTE` to make it the default. A failed push never deletes
+the local backup.
+
+### Schedule it
+
+```bash
+claude-backup schedule --daily --at 02:30          # launchd / systemd timer / cron
+claude-backup schedule --status
+claude-backup unschedule
+```
+
+Pass options to each scheduled run after `--`, e.g.
+`schedule --daily -- --no-history --remote 'cmd:rclone copy {} d:/'`.
+
+### Restore a subset
+
+```bash
+claude-restore --list-contents                 # what's inside an archive
+claude-restore --only agents,commands          # restore just those
+claude-restore --only settings --home-only
+```
+
+Categories: `settings agents commands hooks skills mcp claude-md history plugins`.
 
 By default a backup includes your config **and** conversation history, but
 **prunes** big regenerable data (plugin code, caches, venvs). Plugin *code* is

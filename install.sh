@@ -17,7 +17,21 @@ INSTALL_COMPLETIONS=1
 INSTALL_BANNER_CONF=1
 ASSUME_YES=0
 
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Where this script's sources live. Empty/invalid when piped via `curl | bash`,
+# in which case we bootstrap by downloading the repo below.
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+
+# Repo coordinates for the curl|bash bootstrap (override via env).
+CCB_REPO="${CCB_REPO:-dberuben/claude-code-backup}"
+CCB_REF="${CCB_REF:-main}"
+
+BOOTSTRAP_TMP=""
+# Note the trailing `return 0`: without it the handler's last command is the
+# `[ -n "$BOOTSTRAP_TMP" ]` test, which is false (status 1) on the normal local
+# install, and an EXIT trap's last status overrides the script's exit code —
+# making a successful install exit 1 and failing CI.
+cleanup_bootstrap() { [ -n "$BOOTSTRAP_TMP" ] && rm -rf "$BOOTSTRAP_TMP"; return 0; }
+trap cleanup_bootstrap EXIT
 
 usage() {
   cat <<'EOF'
@@ -25,6 +39,7 @@ install.sh - install claude-code-backup
 
 USAGE:
   ./install.sh [options]
+  curl -fsSL https://raw.githubusercontent.com/dberuben/claude-code-backup/main/install.sh | bash
 
 OPTIONS:
   --prefix <path>     Install prefix (default: ~/.local)
@@ -32,7 +47,37 @@ OPTIONS:
   --no-banner-conf    Do not install the example banner config
   --yes               Do not prompt (assume yes for optional steps)
   --help              Show this help
+
+ENV (curl|bash bootstrap):
+  CCB_REPO   owner/name to download from (default: dberuben/claude-code-backup)
+  CCB_REF    branch or tag to install     (default: main)
 EOF
+}
+
+# bootstrap_sources - when running without a local checkout (piped via curl),
+# download the repo tarball for CCB_REF and point SRC_DIR at the extracted tree.
+bootstrap_sources() {
+  local url dl
+  url="https://github.com/$CCB_REPO/archive/$CCB_REF.tar.gz"   # works for branch or tag
+  echo "==> No local sources found; downloading $CCB_REPO@$CCB_REF…"
+  BOOTSTRAP_TMP="$(mktemp -d "${TMPDIR:-/tmp}/ccb-install.XXXXXX")" || { echo "install.sh: mktemp failed" >&2; exit 1; }
+
+  if command -v curl >/dev/null 2>&1; then
+    dl="curl -fsSL"
+  elif command -v wget >/dev/null 2>&1; then
+    dl="wget -qO-"
+  else
+    echo "install.sh: need curl or wget to bootstrap (or run from a git checkout)" >&2
+    exit 1
+  fi
+
+  if ! $dl "$url" | tar xz -C "$BOOTSTRAP_TMP"; then
+    echo "install.sh: download/extract failed: $url" >&2
+    exit 1
+  fi
+  SRC_DIR="$(find "$BOOTSTRAP_TMP" -maxdepth 1 -type d -name 'claude-code-backup-*' 2>/dev/null | head -n1)"
+  [ -n "$SRC_DIR" ] && [ -f "$SRC_DIR/lib/common.sh" ] \
+    || { echo "install.sh: unexpected archive layout from $url" >&2; exit 1; }
 }
 
 while [ $# -gt 0 ]; do
@@ -46,6 +91,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# If we are not sitting in a checkout (e.g. piped via curl|bash), fetch sources.
+if [ -z "$SRC_DIR" ] || [ ! -f "$SRC_DIR/lib/common.sh" ] || [ ! -f "$SRC_DIR/bin/claude-backup" ]; then
+  bootstrap_sources
+fi
 
 BIN_DIR="$PREFIX/bin"
 LIB_DIR="$PREFIX/share/claude-code-backup/lib"

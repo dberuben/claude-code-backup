@@ -43,6 +43,8 @@ USAGE:
 OPTIONS:
   --from <archive>      Restore from a specific archive (default: latest)
   --list                List available backups and exit
+  --list-contents       Show which categories an archive contains, then exit
+  --only <cat[,cat…]>   Restore only these categories (see CATEGORIES)
   --dry-run             Show the restore plan only
   --force               Do not ask for confirmation
   --home-only           Restore only global (~) config
@@ -53,18 +55,28 @@ OPTIONS:
   --json                Machine-readable JSON output
   --help                Show this help
   --version             Show version
+
+CATEGORIES (for --only):
+  settings agents commands hooks skills mcp claude-md history plugins
+  e.g.  claude-restore --only agents,commands
+        claude-restore --only settings --home-only
+  Note: home-level `settings` and `mcp` both live in ~/.claude.json, so
+  restoring either reverts that whole file.
 EOF
 }
 
 OPT_FROM=""; OPT_DEST=""; OPT_DRY_RUN=0; OPT_FORCE=0
 OPT_HOME_ONLY=0; OPT_PROJECT_ONLY=0; OPT_BACKUP_EXISTING=1
-DO_LIST=0
+OPT_ONLY=""
+DO_LIST=0; DO_LIST_CONTENTS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --from)               OPT_FROM="${2:-}"; shift ;;
     --dest)               OPT_DEST="${2:-}"; shift ;;
     --list)               DO_LIST=1 ;;
+    --list-contents)      DO_LIST_CONTENTS=1 ;;
+    --only)               OPT_ONLY="${2:-}"; shift ;;
     --dry-run)            OPT_DRY_RUN=1 ;;
     --force)              OPT_FORCE=1 ;;
     --home-only)          OPT_HOME_ONLY=1 ;;
@@ -86,6 +98,11 @@ fi
 
 if [ "$DO_LIST" = "1" ]; then
   do_list
+  exit 0
+fi
+
+if [ "$DO_LIST_CONTENTS" = "1" ]; then
+  do_list_contents
   exit 0
 fi
 

@@ -27,12 +27,18 @@ for _cand in \
 done
 [ -n "$CCB_LIB_DIR" ] || { echo "claude-backup: cannot locate lib dir (set CLAUDE_BACKUP_LIB)" >&2; exit 1; }
 export CCB_LIB_DIR
+# Absolute path to this very binary, used by `schedule` to write the cron/timer
+# command. _self is the dir of the fully symlink-resolved script.
+CCB_SELF_BIN="$_self/$(basename "${BASH_SOURCE[0]}")"
+export CCB_SELF_BIN
 # shellcheck source=../lib/common.sh
 . "$CCB_LIB_DIR/common.sh"
 # shellcheck source=../lib/archive.sh
 . "$CCB_LIB_DIR/archive.sh"
 # shellcheck source=../lib/restore.sh
 . "$CCB_LIB_DIR/restore.sh"
+# shellcheck source=../lib/verify.sh
+. "$CCB_LIB_DIR/verify.sh"
 
 usage() {
   cat <<'EOF'
@@ -41,6 +47,10 @@ claude-backup - back up Claude Code configuration
 USAGE:
   claude-backup [options]      Create a backup (default)
   claude-backup list           List existing backups
+  claude-backup verify [opts]  Check an archive's integrity (gzip + checksum)
+  claude-backup push   [opts]  Push an existing backup to a remote
+  claude-backup schedule [opts]   Install a recurring backup (launchd/systemd/cron)
+  claude-backup unschedule        Remove the recurring backup
   claude-backup doctor         Diagnose the environment
   claude-backup banner         Print the status banner
 
@@ -52,11 +62,28 @@ OPTIONS (backup):
   --full               Include everything (no pruning of caches/plugins/etc.)
   --include-env        Include .env.claude and .envrc (may contain secrets)
   --strict-secrets     Abort if likely secrets are detected
+  --remote <spec>      After backup, push the archive to a remote (see REMOTE)
   --dry-run            Show what would be backed up
   --json               Machine-readable JSON output
   --quiet              Minimal output
   --help               Show this help
   --version            Show version
+
+OPTIONS (verify / push):
+  --from <archive>     Operate on a specific archive (default: latest)
+  --remote <spec>      Remote spec for `push` (see REMOTE)
+
+REMOTE:
+  A remote is a user command, so any transport works with no extra dependency:
+    --remote 'cmd:rclone copy {} mydrive:claude/'   # {} = archive path
+    --remote 'cmd:rsync -a {} nas:/backups/'        # appended if no {}
+  Or set CLAUDE_BACKUP_REMOTE in the environment.
+
+SCHEDULE:
+  claude-backup schedule [--daily|--weekly|--hourly] [--at HH:MM] [-- <backup opts>]
+  claude-backup schedule --status
+  Extra options after `--` are passed to each scheduled backup, e.g.:
+    claude-backup schedule --daily --at 02:30 -- --no-history --remote 'cmd:rclone copy {} d:/'
 
 DESTINATION ORDER:
   --dest  >  $CLAUDE_BACKUP_DIR  >  $HOME/Backups/claude-code
@@ -66,14 +93,6 @@ EOF
 # ---------------------------------------------------------------------------
 # doctor
 # ---------------------------------------------------------------------------
-_chk() {  # _chk <ok|warn|fail> <message>
-  case "$1" in
-    ok)   printf '  %s✓%s %s\n'  "$C_GREEN"  "$C_RESET" "$2" ;;
-    warn) printf '  %s⚠%s %s\n'  "$C_YELLOW" "$C_RESET" "$2" ;;
-    fail) printf '  %s✗%s %s\n'  "$C_RED"    "$C_RESET" "$2" ;;
-  esac
-}
-
 do_doctor() {
   local backup_dir; backup_dir="$(resolve_backup_dir "${OPT_DEST:-}")"
   log_step "claude-code-backup doctor (v$CCB_VERSION)"
@@ -126,12 +145,34 @@ do_doctor() {
 # ---------------------------------------------------------------------------
 OPT_DEST=""; OPT_INCLUDE_PROJECT=1; OPT_INCLUDE_ENV=0
 OPT_STRICT=0; OPT_DRY_RUN=0; OPT_FULL=0; OPT_NO_HISTORY=0
+OPT_REMOTE=""; OPT_FROM=""
 
 # Subcommand dispatch on the first argument.
 case "${1:-}" in
   list)   shift
           while [ $# -gt 0 ]; do case "$1" in --json) CCB_JSON=1;; --dest) OPT_DEST="$2"; shift;; *) ;; esac; shift; done
           do_list; exit 0 ;;
+  verify) shift
+          while [ $# -gt 0 ]; do case "$1" in
+            --from) OPT_FROM="${2:-}"; shift;; --dest) OPT_DEST="${2:-}"; shift;;
+            --json) CCB_JSON=1;; --quiet) CCB_QUIET=1;;
+            -h|--help) usage; exit 0;; *) die "unknown option for verify: $1";;
+          esac; shift; done
+          do_verify; exit $? ;;
+  push)   shift
+          while [ $# -gt 0 ]; do case "$1" in
+            --from) OPT_FROM="${2:-}"; shift;; --dest) OPT_DEST="${2:-}"; shift;;
+            --remote) OPT_REMOTE="${2:-}"; shift;;
+            --json) CCB_JSON=1;; --quiet) CCB_QUIET=1;;
+            -h|--help) usage; exit 0;; *) die "unknown option for push: $1";;
+          esac; shift; done
+          do_push; exit $? ;;
+  schedule|unschedule)
+          sub="$1"; shift
+          # shellcheck source=../lib/schedule.sh
+          . "$CCB_LIB_DIR/schedule.sh"
+          if [ "$sub" = "unschedule" ]; then do_unschedule "$@"; else do_schedule "$@"; fi
+          exit $? ;;
   doctor) shift; do_doctor; exit 0 ;;
   banner) shift
           # shellcheck source=../lib/banner.sh
@@ -150,6 +191,7 @@ while [ $# -gt 0 ]; do
     --full)            OPT_FULL=1 ;;
     --include-env)     OPT_INCLUDE_ENV=1 ;;
     --strict-secrets)  OPT_STRICT=1 ;;
+    --remote)          OPT_REMOTE="${2:-}"; shift ;;
     --dry-run)         OPT_DRY_RUN=1 ;;
     --json)            CCB_JSON=1 ;;
     --quiet)           CCB_QUIET=1 ;;
@@ -159,6 +201,9 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Fall back to the environment-configured remote when no --remote was given.
+OPT_REMOTE="${OPT_REMOTE:-${CLAUDE_BACKUP_REMOTE:-}}"
 
 platform_supported || log_warn "Unsupported platform ($(uname -s)); proceeding best-effort."
 do_backup

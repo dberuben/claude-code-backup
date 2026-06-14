@@ -70,6 +70,65 @@ do_list() {
 }
 
 # ---------------------------------------------------------------------------
+# Selective restore: categories
+# ---------------------------------------------------------------------------
+# The categories a user can pass to `--only`. Kept here so help/listing and the
+# planner share one source of truth.
+CCB_CATEGORIES="settings agents commands hooks skills mcp claude-md history plugins"
+
+# ccb_category_relpaths <category> - print the archive-relative paths that make
+# up a category (one per line). Returns non-zero for an unknown category.
+# Note: home-level `settings` and `mcp` both map to ~/.claude.json, which is a
+# single file holding both — restoring either reverts the whole file.
+ccb_category_relpaths() {
+  case "$1" in
+    settings)  printf '%s\n' home/.claude/settings.json home/.claude/settings.local.json \
+                             home/.claude.json \
+                             project/.claude/settings.json project/.claude/settings.local.json ;;
+    agents)    printf '%s\n' home/.claude/agents   project/.claude/agents ;;
+    commands)  printf '%s\n' home/.claude/commands project/.claude/commands ;;
+    hooks)     printf '%s\n' home/.claude/hooks    project/.claude/hooks ;;
+    skills)    printf '%s\n' home/.claude/skills   project/.claude/skills ;;
+    mcp)       printf '%s\n' home/.claude.json     project/.mcp.json ;;
+    claude-md|claudemd) printf '%s\n' home/.claude/CLAUDE.md project/CLAUDE.md project/CLAUDE.local.md ;;
+    history)   printf '%s\n' home/.claude/projects ;;
+    plugins)   printf '%s\n' home/.claude/plugins ;;
+    *) return 1 ;;
+  esac
+}
+
+# do_list_contents - implement `claude-restore --list-contents`. Show which
+# categories an archive contains. Reads OPT_FROM / OPT_DEST.
+do_list_contents() {
+  require_cmd tar
+  local archive="${OPT_FROM:-}"
+  if [ -z "$archive" ]; then
+    archive="$(latest_backup "$(resolve_backup_dir "${OPT_DEST:-}")")"
+    [ -n "$archive" ] || die "no backup found; use --from <archive>"
+  fi
+  [ -f "$archive" ] || die "archive not found: $archive"
+  validate_archive_listing "$archive" >/dev/null 2>&1 || die "refusing to inspect an unsafe archive"
+
+  local listing; listing="$(tar -tzf "$archive" 2>/dev/null)"
+  log_step "Categories in $(basename "$archive")"
+  local cat rel relre present
+  for cat in $CCB_CATEGORIES; do
+    present=""
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      # Anchor on a path-component boundary so e.g. "agents-archive/" does not
+      # count as the "agents" category. Escape the dots in rel for ERE.
+      relre="${rel//./\\.}"
+      printf '%s\n' "$listing" | grep -Eq "^(\./)?${relre}"'(/|$)' \
+        && present="$present $rel"
+    done < <(ccb_category_relpaths "$cat")
+    if [ -n "$present" ]; then _chk ok "$cat:$present"; else _chk warn "$cat: (absent)"; fi
+  done
+  log_info "Restore a subset with:  claude-restore --only <cat>[,<cat>…]"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 # validate_archive_listing <archive> - inspect the tar listing for unsafe paths.
@@ -274,15 +333,47 @@ do_restore() {
   [ "${OPT_HOME_ONLY:-0}" = "1" ]    && do_project=0
 
   local plan=()  # "src|dest"
-  if [ "$do_home" = "1" ] && [ -d "$tmp/home" ]; then
-    [ -e "$tmp/home/.claude" ]      && plan+=("$tmp/home/.claude|$HOME/.claude")
-    [ -e "$tmp/home/.claude.json" ] && plan+=("$tmp/home/.claude.json|$HOME/.claude.json")
-  fi
-  if [ "$do_project" = "1" ] && [ -d "$tmp/project" ]; then
-    local pf
-    for pf in .claude .mcp.json CLAUDE.md CLAUDE.local.md .env.claude .envrc; do
-      [ -e "$tmp/project/$pf" ] && plan+=("$tmp/project/$pf|$PWD/$pf")
+  if [ -n "${OPT_ONLY:-}" ]; then
+    # --- Selective restore by category -------------------------------------
+    local cats=() cat rel dest seen=" "
+    local IFS_save="$IFS"; IFS=','; set -f
+    # shellcheck disable=SC2206
+    cats=($OPT_ONLY); set +f; IFS="$IFS_save"
+    # Validate every category up front so a typo fails before any work.
+    for cat in "${cats[@]}"; do
+      cat="$(printf '%s' "$cat" | tr 'A-Z' 'a-z' | tr -d ' ')"
+      [ -n "$cat" ] || continue
+      ccb_category_relpaths "$cat" >/dev/null 2>&1 \
+        || die "unknown category: $cat (known: $CCB_CATEGORIES)"
     done
+    for cat in "${cats[@]}"; do
+      cat="$(printf '%s' "$cat" | tr 'A-Z' 'a-z' | tr -d ' ')"
+      [ -n "$cat" ] || continue
+      while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        case "$rel" in
+          home/*)    [ "$do_home" = "1" ]    || continue ;;
+          project/*) [ "$do_project" = "1" ] || continue ;;
+        esac
+        [ -e "$tmp/$rel" ] || continue
+        case "$seen" in *" $rel "*) continue ;; esac
+        seen="$seen$rel "
+        dest="$(ccb_relpath_to_dest "$rel")"
+        [ -n "$dest" ] && plan+=("$tmp/$rel|$dest")
+      done < <(ccb_category_relpaths "$cat")
+    done
+  else
+    # --- Coarse restore (whole home / project trees) -----------------------
+    if [ "$do_home" = "1" ] && [ -d "$tmp/home" ]; then
+      [ -e "$tmp/home/.claude" ]      && plan+=("$tmp/home/.claude|$HOME/.claude")
+      [ -e "$tmp/home/.claude.json" ] && plan+=("$tmp/home/.claude.json|$HOME/.claude.json")
+    fi
+    if [ "$do_project" = "1" ] && [ -d "$tmp/project" ]; then
+      local pf
+      for pf in .claude .mcp.json CLAUDE.md CLAUDE.local.md .env.claude .envrc; do
+        [ -e "$tmp/project/$pf" ] && plan+=("$tmp/project/$pf|$PWD/$pf")
+      done
+    fi
   fi
 
   [ "${#plan[@]}" -gt 0 ] || die "nothing to restore for the selected scope"
